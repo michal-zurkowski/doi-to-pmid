@@ -1,7 +1,10 @@
 import argparse
 import requests
+import bibtexparser
+from bibtexparser.bwriter import BibTexWriter
+from bibtexparser.bparser import BibTexParser
+from urllib.parse import urlparse
 
-#doi = "10.1093/bioinformatics/btab069"  # replace with your DOI
 
 class DoiInfo:
     doi: str
@@ -12,8 +15,19 @@ class DoiInfo:
     pm_link: str = "http://www.ncbi.nlm.nih.gov/pubmed/"
     pmc_link: str = "http://www.ncbi.nlm.nih.gov/pmc/articles/"
 
+    # Check if DOI might have been provided with full URL like
+    # https://doi.org/10.1006/jmbi.1994.1017
+    # https://doi.org/10.1155/2017/6783010
+    def sanitize(self, doi) -> str:
+        # Is it URL?
+        if urlparse(doi) is not None:
+            # Get rid of / on the left
+            return urlparse(doi).path.lstrip("/")
+        # If it is not URL, just try as is
+        return doi
+
     def __init__(self, doi):
-        self.doi = doi
+        self.doi = self.sanitize(doi)
         self.doi_link += f"{self.doi}"
 
     def has_pmid(self) -> bool:
@@ -40,6 +54,7 @@ class DoiInfo:
                     print(f"PMID not found for {self.doi}")
                 if "pmcid" in data:
                     self.pmcid = data["pmcid"].split("/")[-1]
+                    self.pmc_link += f"{self.pmcid}"
                 else:
                     print(f"PMCID not found for {self.doi}")
             else:
@@ -65,11 +80,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--doi",
                         action='store_true',
+                        default=False,
                         help="Analyze all provided arguments as DOI that need PMID and PMCID")
     parser.add_argument("dois",
                         metavar='DOI',
                         type=str,
-                        nargs='+',
+                        nargs='*',
                         help="DOI to be analyzed.")
     parser.add_argument("-o", "--output",
                         help="Modified BiBTex file. By default output to terminal.")
@@ -78,8 +94,42 @@ def main():
 
     args = parser.parse_args()
 
+    out_filename = "modified.bib"
+    if args.output:
+        out_filename = args.output
     if args.bibtex:
-        print("TODO: Analyze bibtex")
+        parser = BibTexParser()
+        parser.ignore_nonstandard_types = False
+        parser.common_strings = False
+
+        # Modify all entries.
+        with open(args.bibtex, "r") as bibtex_file:
+            bibtex_db = bibtexparser.load(bibtex_file, parser)
+            for entry in bibtex_db.entries:
+                # Check if DOI entry is present.
+                if "doi" in entry:
+                    # Retrieve PMID and PMCID
+                    # If "note" entry is present, add DOI/PMID/PMCID at the end.
+                    info = DoiInfo(entry["doi"])
+                    info.analyze()
+                    if "note" in entry:
+                        entry["note"] += f"{info}"
+                    else:
+                        entry["note"] = f"{info}"
+
+        writer = BibTexWriter()
+        writer.indent = '  '
+        writer.order_entries_by = ('ENTRYTYPE',
+                                   'author',
+                                   'title',
+                                   'journal',
+                                   'year',
+                                   'volume',
+                                   'number',
+                                   'pages',
+                                   'note')
+        with open(out_filename, "w") as out_file:
+            bibtexparser.dump(bibtex_db, out_file, writer)
     elif args.doi and len(args.dois) > 0:
         for doi in args.dois:
             info = DoiInfo(doi)
