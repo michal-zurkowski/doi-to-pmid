@@ -1,6 +1,7 @@
 import argparse
 import requests
 import bibtexparser
+import sys
 from bibtexparser.bwriter import BibTexWriter
 from bibtexparser.bparser import BibTexParser
 from urllib.parse import urlparse
@@ -67,7 +68,7 @@ class DoiInfo:
         if self.has_pmid():
             ret += f"[PubMed:\\href{{{self.pm_link}}}{{{self.pmid}}}]"
         if self.has_pmcid():
-            ret += f"[PubMed Central:\\href{{{self.pmc_link}}}{{{self.pmid}}}]"
+            ret += f"[PubMed Central:\\href{{{self.pmc_link}}}{{{self.pmcid}}}]"
         ret += f"[doi:\\href{{{self.doi_link}}}{{{self.doi}}}]"
         return ret
 
